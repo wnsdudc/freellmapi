@@ -1,0 +1,84 @@
+// Screen text in Korean and English.
+export const TEXT = {
+  ko: {
+    product: '교실 책상 · 1인용',
+    productMeta: '65 × 45 × 72 cm · 데모 제품',
+    start: '카메라 켜고 시작',
+    viewer: '카메라 없이 3D로 보기',
+    intro: '카메라가 켜지면 방금 찍은 QR 코드를 다시 화면에 비추세요. QR 위에 책상이 나타나 조립 순서를 보여줍니다.',
+    demo: '학생 프로젝트 데모입니다. 가상의 제품이며 실제 제조사의 설명서가 아닙니다.',
+    searching: 'QR 코드를 화면 안에 비춰 주세요',
+    tracking: '인식 중',
+    stepOf: '{i} / {n}',
+    prev: '이전',
+    next: '다음',
+    again: '처음부터',
+    replay: '다시 보기',
+    size: '크기',
+    tip: '주의',
+    need: '준비물',
+    camDenied: '카메라 권한이 거부되었습니다. 브라우저 설정에서 이 사이트의 카메라를 허용한 뒤 새로고침하세요. 지금은 3D 화면으로 보여드립니다.',
+    camNone: '이 브라우저에서는 카메라를 쓸 수 없습니다. 휴대폰 기본 카메라 앱으로 QR을 찍어 Safari나 Chrome에서 여세요. 지금은 3D 화면으로 보여드립니다.',
+    camInsecure: '카메라는 https 주소에서만 켜집니다.',
+    close: '닫기',
+    lang: 'English',
+  },
+  en: {
+    product: 'Classroom desk · single',
+    productMeta: '65 × 45 × 72 cm · demo product',
+    start: 'Start camera',
+    viewer: 'View in 3D without camera',
+    intro: 'When the camera is on, point it at the same QR code again. The desk appears on top of the code and shows each assembly step.',
+    demo: 'Student project demo. Fictional product, not a manufacturer’s manual.',
+    searching: 'Point the camera at the QR code',
+    tracking: 'Tracking',
+    stepOf: '{i} / {n}',
+    prev: 'Back',
+    next: 'Next',
+    again: 'Start over',
+    replay: 'Replay',
+    size: 'Size',
+    tip: 'Watch out',
+    need: 'You need',
+    camDenied: 'Camera access was blocked. Allow the camera for this site in the browser settings and reload. Showing the 3D view for now.',
+    camNone: 'This browser cannot use the camera. Scan the QR code with the phone’s camera app and open it in Safari or Chrome. Showing the 3D view for now.',
+    camInsecure: 'The camera only works on an https address.',
+    close: 'Close',
+    lang: '한국어',
+  },
+};
+
+export const HW_NAMES = {
+  ko: { '#1': '상판 나사', '#2': '볼트 M6', '#3': '고무 발캡', '#4': '가방걸이', driver: '십자 드라이버', hex: '육각 렌치 (동봉)', mallet: '고무망치 (선택)' },
+  en: { '#1': 'Desktop screw', '#2': 'M6 bolt', '#3': 'Rubber foot', '#4': 'Bag hook', driver: 'Phillips screwdriver', hex: 'Hex key (included)', mallet: 'Rubber mallet (optional)' },
+};
+
+// need: [code, count] pairs or tool keys
+export const STEPS = {
+  ko: {
+    parts: { title: '부품 확인', body: '상판 A, 다리 프레임 B·C, 책받침 D, 발걸이 E와 철물 봉투를 꺼내 화면과 비교하세요.', tip: '철물이 모자라면 조립을 시작하기 전에 판매처에 문의하세요.', need: [['#1', 8], ['#2', 6], ['#3', 4], ['#4', 1]] },
+    top: { title: '상판 뒤집어 놓기', body: '상판 A를 윗면이 바닥을 향하게 뒤집어 놓으세요.', tip: '담요나 펼친 박스를 깔면 상판이 긁히지 않습니다.', need: [] },
+    frameB: { title: '다리 프레임 B 고정', body: '프레임 B를 상판 한쪽 끝에 맞추고 상판 나사(#1) 4개로 고정하세요.', tip: '4개를 모두 살짝 끼운 뒤 대각선 순서로 조이세요. 하나씩 끝까지 조이면 구멍이 어긋납니다.', need: [['#1', 4], 'driver'] },
+    frameC: { title: '다리 프레임 C 고정', body: '반대쪽 끝에 프레임 C를 맞추고 상판 나사(#1) 4개로 고정하세요.', tip: 'B와 C의 다리가 같은 방향(위쪽)을 향하는지 확인하세요.', need: [['#1', 4], 'driver'] },
+    tray: { title: '책받침 D 달기', body: '책받침 D를 두 프레임의 가운데 가로대에 올리고 볼트(#2) 4개로 고정하세요.', tip: '책받침의 열린 쪽이 의자 쪽을 향해야 합니다. 반대로 달면 책을 넣을 수 없습니다.', need: [['#2', 4], 'hex'] },
+    foot: { title: '발걸이 E 연결', body: '발걸이 E를 앞쪽 두 다리 사이에 끼우고 볼트(#2) 2개로 고정하세요.', tip: '양쪽 볼트를 먼저 다 끼운 뒤에 조이세요.', need: [['#2', 2], 'hex'] },
+    caps: { title: '고무 발캡 끼우기', body: '다리 끝 4곳에 고무 발캡(#3)을 끼우세요.', tip: '잘 들어가지 않으면 고무망치로 가볍게 두드리세요.', need: [['#3', 4], 'mallet'] },
+    flip: { title: '책상 바로 세우기', body: '두 사람이 양쪽에서 들어 책상을 바로 세우세요.', tip: '다리 하나만 잡고 끌어 올리면 프레임이 휠 수 있습니다.', need: [] },
+    hook: { title: '가방걸이 달기', body: '가방걸이(#4)를 프레임 바깥쪽 구멍에 끼우고 나사로 고정하세요.', tip: '무거운 가방을 걸면 책상이 기울 수 있으니 바닥에 두세요.', need: [['#4', 1], 'driver'] },
+    done: { title: '완성: 흔들림 확인', body: '평평한 바닥에 두고 모서리를 눌러 보세요. 흔들리면 나사를 다시 조이세요.', tip: '', need: [] },
+  },
+  en: {
+    parts: { title: 'Check the parts', body: 'Take out desktop A, leg frames B and C, book tray D, footrest E and the hardware bag, and compare them with the screen.', tip: 'If any hardware is missing, contact the seller before you start.', need: [['#1', 8], ['#2', 6], ['#3', 4], ['#4', 1]] },
+    top: { title: 'Lay the desktop upside down', body: 'Place desktop A with its top surface facing the floor.', tip: 'Put a blanket or the flattened box underneath so the top does not get scratched.', need: [] },
+    frameB: { title: 'Attach leg frame B', body: 'Line frame B up with one end of the desktop and fix it with 4 desktop screws (#1).', tip: 'Start all 4 screws loosely, then tighten them in a diagonal order. Tightening one at a time can misalign the holes.', need: [['#1', 4], 'driver'] },
+    frameC: { title: 'Attach leg frame C', body: 'Line frame C up with the other end and fix it with 4 desktop screws (#1).', tip: 'Check that the legs of B and C point the same way (up).', need: [['#1', 4], 'driver'] },
+    tray: { title: 'Mount book tray D', body: 'Set tray D on the middle rails of both frames and fix it with 4 bolts (#2).', tip: 'The open side of the tray must face the chair. If it faces the other way, books will not go in.', need: [['#2', 4], 'hex'] },
+    foot: { title: 'Connect footrest E', body: 'Fit bar E between the two front legs and fix it with 2 bolts (#2).', tip: 'Insert both bolts first, then tighten them.', need: [['#2', 2], 'hex'] },
+    caps: { title: 'Fit the rubber feet', body: 'Push a rubber foot (#3) onto each of the 4 leg ends.', tip: 'If one is tight, tap it gently with a rubber mallet.', need: [['#3', 4], 'mallet'] },
+    flip: { title: 'Turn the desk upright', body: 'Lift the desk with two people, one on each side, and turn it upright.', tip: 'Pulling it up by one leg can bend the frame.', need: [] },
+    hook: { title: 'Attach the bag hook', body: 'Fit the bag hook (#4) into the hole on the outside of a frame and screw it tight.', tip: 'A heavy bag can tip the desk. Put heavy bags on the floor.', need: [['#4', 1], 'driver'] },
+    done: { title: 'Done: check for wobble', body: 'Stand the desk on a flat floor and press each corner. If it wobbles, tighten the screws again.', tip: '', need: [] },
+  },
+};
+
+export function fmt(s, v = {}) { return String(s).replace(/\{(\w+)\}/g, (_, k) => (k in v ? v[k] : '')); }

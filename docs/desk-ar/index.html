@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<title>교실 책상 AR 조립</title>
+<style>
+/* Camera AR screen: the live camera fills the screen; step text sits on dark glass panels over it.
+   One dark look on purpose, because it sits on top of a camera image. Accent blue = 3D part highlight. */
+:root {
+  --ink: #f4f7fb;
+  --muted: #b6c0cc;
+  --glass: rgba(11, 15, 21, 0.74);
+  --glass-line: rgba(255, 255, 255, 0.14);
+  --accent: #2f80ff;
+  --accent-ink: #ffffff;
+  --warn: #ffcf70;
+  --ok: #4ade80;
+  --bg: #0b0f14;
+  --font: system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Segoe UI", Roboto, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 16px/1.5 var(--font); overflow: hidden; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+#cam, #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#cam { object-fit: cover; background: #000; }
+#gl { touch-action: none; }
+body.viewer #cam { display: none; }
+body.viewer { background: radial-gradient(120% 80% at 50% 30%, #1d2733 0%, #0b0f14 70%); }
+#ui { position: fixed; inset: 0; pointer-events: none; }
+#ui > * { pointer-events: auto; }
+button { font: inherit; }
+.btn {
+  min-height: 48px; padding: 0 18px; border-radius: 14px; border: 1.5px solid var(--glass-line);
+  background: rgba(255, 255, 255, 0.08); color: var(--ink); font-weight: 650; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+.btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.icon { width: 48px; padding: 0; }
+.btn.icon svg { width: 22px; height: 22px; }
+.btn:disabled { opacity: .35; }
+.btn.wide { width: 100%; }
+
+.bar {
+  position: absolute; top: 0; left: 0; right: 0;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) max(14px, env(safe-area-inset-right, 0px)) 0 max(14px, env(safe-area-inset-left, 0px));
+}
+.step { background: var(--glass); border: 1px solid var(--glass-line); border-radius: 16px; padding: 8px 14px 10px; min-width: 0;
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.count { font-size: 13px; font-weight: 700; letter-spacing: .06em; color: var(--accent); font-variant-numeric: tabular-nums; }
+.step h1 { margin: 0; font-size: 20px; line-height: 1.25; font-weight: 750; text-wrap: balance; }
+.progress { display: flex; gap: 3px; list-style: none; margin: 8px 0 0; padding: 0; }
+.progress li { flex: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,.22); }
+.progress li.done { background: rgba(255,255,255,.7); }
+.progress li.now { background: var(--accent); }
+.chip-btn { min-height: 40px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--glass-line); background: var(--glass); color: var(--ink); font-weight: 650; font-size: 14px; flex: none;
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+
+.status {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, calc(-50% - 120px));
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px;
+  background: var(--glass); border: 1px solid var(--glass-line); font-weight: 650; font-size: 15px; white-space: nowrap;
+}
+.status .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--warn); }
+.status.on .dot { background: var(--ok); }
+.status.on { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 236px); transform: translateX(-50%); padding: 5px 12px; font-size: 13px; }
+.guide { position: absolute; left: 50%; top: 50%; width: min(58vw, 260px); aspect-ratio: 1; transform: translate(-50%, -50%); pointer-events: none !important; }
+.guide i { position: absolute; width: 34px; height: 34px; border: 4px solid #fff; opacity: .9; }
+.guide i:nth-child(1) { left: 0; top: 0; border-right: 0; border-bottom: 0; border-radius: 10px 0 0 0; }
+.guide i:nth-child(2) { right: 0; top: 0; border-left: 0; border-bottom: 0; border-radius: 0 10px 0 0; }
+.guide i:nth-child(3) { left: 0; bottom: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 10px; }
+.guide i:nth-child(4) { right: 0; bottom: 0; border-left: 0; border-top: 0; border-radius: 0 0 10px 0; }
+
+.card {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  margin: 0 max(10px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 10px) max(10px, env(safe-area-inset-left, 0px));
+  background: var(--glass); border: 1px solid var(--glass-line); border-radius: 20px; padding: 14px 14px 12px;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); display: grid; gap: 10px;
+}
+.card p { margin: 0; }
+#body { font-size: 16px; }
+.need { display: flex; flex-wrap: wrap; gap: 6px; }
+.need span { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px 3px 4px; border-radius: 999px; background: rgba(255,255,255,.1); font-size: 13.5px; }
+.need span.tool { padding-left: 10px; }
+.need b { display: inline-grid; place-items: center; min-width: 24px; height: 22px; padding: 0 5px; border-radius: 11px; background: var(--ink); color: #0b0f14; font-size: 12px; }
+.need em { font-style: normal; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tip { font-size: 14px; color: var(--muted); }
+.tip b { color: var(--warn); margin-right: 4px; }
+.nav { display: grid; grid-template-columns: 1fr auto auto 1.6fr; gap: 8px; }
+
+.start { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px max(16px, env(safe-area-inset-right, 0px)) 20px max(16px, env(safe-area-inset-left, 0px));
+  background: radial-gradient(120% 70% at 50% 0%, #1b2a3d 0%, #0b0f14 65%); }
+.start-card { width: min(26rem, 100%); display: grid; gap: 12px; }
+.eyebrow { margin: 0; color: var(--accent); font-weight: 750; letter-spacing: .1em; font-size: 13px; text-transform: uppercase; }
+.start h2 { margin: 0; font-size: 30px; line-height: 1.15; }
+.start p { margin: 0; }
+.meta { color: var(--muted); font-variant-numeric: tabular-nums; }
+.fig { width: 100%; height: auto; margin: 6px 0; }
+.fine { font-size: 12.5px; color: var(--muted); }
+.msg { position: absolute; left: 12px; right: 12px; top: calc(env(safe-area-inset-top, 0px) + 96px); background: #1b2330; border: 1px solid var(--glass-line); border-radius: 16px; padding: 14px; display: grid; gap: 10px; }
+.msg p { margin: 0; }
+@media (min-width: 760px) {
+  .card { left: auto; width: 420px; }
+  .status.on { bottom: auto; top: calc(env(safe-area-inset-top, 0px) + 110px); }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<video id="cam" playsinline muted autoplay></video>
+<canvas id="gl" aria-label="AR view"></canvas>
+
+<div id="ui">
+  <header class="bar">
+    <div class="step">
+      <span id="count" class="count"></span>
+      <h1 id="title"></h1>
+      <ol id="progress" class="progress" aria-hidden="true"></ol>
+    </div>
+    <button id="lang" class="chip-btn" type="button"></button>
+  </header>
+
+  <div id="guide" class="guide" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <div id="status" class="status" role="status"><span class="dot"></span><span id="status-text"></span></div>
+
+  <section id="card" class="card" aria-live="polite">
+    <p id="body"></p>
+    <div id="need" class="need"></div>
+    <p id="tip" class="tip"><b id="tip-label"></b><span id="tip-text"></span></p>
+    <div class="nav">
+      <button id="prev" class="btn" type="button"></button>
+      <button id="replay" class="btn icon" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4.5h4.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button id="size" class="btn icon" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button id="next" class="btn primary" type="button"></button>
+    </div>
+  </section>
+
+  <div id="start" class="start">
+    <div class="start-card">
+      <p class="eyebrow">AR Assembly</p>
+      <h2 id="s-product"></h2>
+      <p id="s-meta" class="meta"></p>
+      <svg class="fig" viewBox="0 0 320 120" aria-hidden="true">
+        <rect x="18" y="18" width="70" height="84" rx="10" fill="none" stroke="#b6c0cc" stroke-width="3"/>
+        <rect x="34" y="40" width="38" height="38" fill="#f4f7fb"/>
+        <path d="M38 44h10v10H38zM58 44h10v10H58zM38 64h10v10H38z" fill="#0b0f14"/>
+        <path d="M100 60h40" stroke="#2f80ff" stroke-width="3" stroke-dasharray="6 5"/>
+        <path d="M136 52l10 8-10 8" fill="none" stroke="#2f80ff" stroke-width="3"/>
+        <path d="M190 88l60-14 50 14-60 16z" fill="#f4f7fb" opacity=".9"/>
+        <path d="M200 60l50-12 44 12-50 13z" fill="#e2c597"/>
+        <path d="M205 62v26M245 50v20M290 61v25M240 73v27" stroke="#56606c" stroke-width="4"/>
+      </svg>
+      <p id="s-intro"></p>
+      <button id="s-start" class="btn primary wide" type="button"></button>
+      <button id="s-viewer" class="btn wide" type="button"></button>
+      <p id="s-demo" class="fine"></p>
+    </div>
+  </div>
+
+  <div id="msg" class="msg" role="alert" hidden>
+    <p id="msg-text"></p>
+    <button id="msg-close" class="btn" type="button"></button>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
