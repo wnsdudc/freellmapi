@@ -68,7 +68,7 @@ button { font: inherit; }
 }
 .status .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--warn); }
 .status.on .dot { background: var(--ok); }
-.status.on { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 236px); transform: translateX(-50%); padding: 5px 12px; font-size: 13px; }
+.status.on { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + var(--card-h, 226px) + 22px); transform: translateX(-50%); padding: 5px 12px; font-size: 13px; }
 .guide { position: absolute; left: 50%; top: 50%; width: min(58vw, 260px); aspect-ratio: 1; transform: translate(-50%, -50%); pointer-events: none !important; }
 .guide i { position: absolute; width: 34px; height: 34px; border: 4px solid #fff; opacity: .9; }
 .guide i:nth-child(1) { left: 0; top: 0; border-right: 0; border-bottom: 0; border-radius: 10px 0 0 0; }
@@ -104,6 +104,20 @@ button { font: inherit; }
 .fine { font-size: 12.5px; color: var(--muted); }
 .msg { position: absolute; left: 12px; right: 12px; top: calc(env(safe-area-inset-top, 0px) + 96px); background: #1b2330; border: 1px solid var(--glass-line); border-radius: 16px; padding: 14px; display: grid; gap: 10px; }
 .msg p { margin: 0; }
+.floor {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + var(--card-h, 226px) + 22px);
+  min-height: 52px; padding: 0 22px; border-radius: 999px; border: 0; background: var(--accent); color: #fff;
+  font-weight: 750; font-size: 16px; box-shadow: 0 8px 24px rgba(0,0,0,.35); display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
+}
+.floor svg { width: 22px; height: 22px; }
+.status.ready { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + var(--card-h, 226px) + 84px); transform: translateX(-50%); font-size: 13px; padding: 5px 12px; }
+.status.ready .dot { background: var(--ok); }
+.xrbar { position: absolute; left: 0; right: 0; top: calc(env(safe-area-inset-top, 0px) + 118px); display: grid; justify-items: center; gap: 8px; padding: 0 12px; }
+.xrbar p { margin: 0; padding: 8px 14px; border-radius: 14px; background: var(--glass); border: 1px solid var(--glass-line); text-align: center; font-weight: 650; max-width: 30rem; }
+.xrbar div { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.xrbar .btn { background: var(--glass); min-height: 44px; }
+body.xr #cam { display: none; }
+body.xr, body.xr #ui { background: transparent; }
 @media (min-width: 760px) {
   .card { left: auto; width: 420px; }
   .status.on { bottom: auto; top: calc(env(safe-area-inset-top, 0px) + 110px); }
@@ -116,7 +130,7 @@ button { font: inherit; }
 <canvas id="gl" aria-label="AR view"></canvas>
 
 <div id="ui">
-  <header class="bar">
+  <header class="bar" data-noxr>
     <div class="step">
       <span id="count" class="count"></span>
       <h1 id="title"></h1>
@@ -127,8 +141,22 @@ button { font: inherit; }
 
   <div id="guide" class="guide" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
   <div id="status" class="status" role="status"><span class="dot"></span><span id="status-text"></span></div>
+  <button id="floor" class="floor" type="button" hidden data-noxr>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l9 4 9-4M3 17l9-4 9 4M12 3v10M8.5 6.5 12 3l3.5 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span id="floor-text"></span>
+  </button>
+  <div id="xrbar" class="xrbar" hidden data-noxr>
+    <p id="xr-hint"></p>
+    <div>
+      <button id="xr-move" class="btn" type="button"></button>
+      <button id="xr-left" class="btn icon" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4.5h4.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button id="xr-right" class="btn icon" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v4.5h-4.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button id="xr-scale" class="btn" type="button"></button>
+      <button id="xr-exit" class="btn" type="button"></button>
+    </div>
+  </div>
 
-  <section id="card" class="card" aria-live="polite">
+  <section id="card" class="card" aria-live="polite" data-noxr>
     <p id="body"></p>
     <div id="need" class="need"></div>
     <p id="tip" class="tip"><b id="tip-label"></b><span id="tip-text"></span></p>
@@ -166,7 +194,7 @@ button { font: inherit; }
     </div>
   </div>
 
-  <div id="msg" class="msg" role="alert" hidden>
+  <div id="msg" class="msg" role="alert" hidden data-noxr>
     <p id="msg-text"></p>
     <button id="msg-close" class="btn" type="button"></button>
   </div>

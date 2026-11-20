@@ -237,3 +237,53 @@ function buildLayout() {
 }
 
 export const HW = ['#1', '#2', '#3', '#4'];
+
+// ---- step state, shared by the live view and the USDZ generator ----
+export function applyStepState(desk, cur) {
+  const steps = desk.steps;
+  const st = steps[cur];
+  desk.layout.visible = !!st.layout;
+  desk.pivot.visible = !st.layout;
+  for (const p of desk.parts) {
+    const isCur = p.step === cur;
+    p.obj.visible = p.step >= 0 && p.step <= cur;
+    if (p.label) p.label.visible = isCur;
+    for (const m of p.mats) {
+      if (!m.userData.base) m.userData.base = m.color.clone();
+      m.color.copy(m.userData.base);
+      m.emissive.setHex(0);
+      m.emissiveIntensity = 0;
+    }
+    for (const mv of p.movers) { mv.obj.position.copy(mv.final); if (mv.obj !== p.obj) mv.obj.visible = true; }
+  }
+  const flipAt = steps.findIndex((s) => s.flip);
+  desk.pivot.rotation.z = cur < flipAt ? Math.PI : 0;
+  desk.pivot.position.y = PRODUCT.h / 2;
+}
+
+const easeOut = (k) => 1 - Math.pow(1 - k, 3);
+const easeInOut = (k) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
+
+// Positions of the current step's parts at t seconds after the step started.
+export function poseAt(desk, cur, t, { hideBeforeStart = true } = {}) {
+  const st = desk.steps[cur];
+  for (const p of st.parts) {
+    for (const mv of p.movers) {
+      const k = Math.min(1, Math.max(0, (t - mv.delay) / 0.9));
+      mv.obj.position.copy(mv.final).addScaledVector(mv.from, 1 - easeOut(k));
+      if (hideBeforeStart) mv.obj.visible = k > 0;
+    }
+  }
+  if (st.flip) {
+    const k = Math.min(1, Math.max(0, (t - 0.4) / 1.8));
+    const ang = Math.PI * (1 - easeInOut(k));
+    desk.pivot.rotation.z = ang;
+    desk.pivot.position.y = PRODUCT.h / 2 + 15 * Math.sin(ang);
+  }
+}
+export function stepDuration(desk, cur) {
+  const st = desk.steps[cur];
+  let d = st.flip ? 2.2 : 0;
+  for (const p of st.parts) for (const mv of p.movers) d = Math.max(d, mv.delay + 0.9);
+  return d;
+}
