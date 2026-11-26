@@ -1,6 +1,6 @@
 // Pen assembly on a plain light desk:
-// 1. take a photo of the 5 parts (several frames, voted) -> 2. check the names (tap a name to change it)
-// -> 3. pick the parts in order; a wrong part gives a red signal.
+// 1. point the camera at the 5 parts: names come from a vote over the last frames; when all 5 are stable it starts
+// by itself -> 2. pick the parts in order; a wrong part gives a red signal.
 // A part counts as picked only when a hand came to its spot, the hand has left again and the bare desk shows
 // where the part lay, with the spot inside the picture. A hand passing over, or a part leaving the picture, is
 // not a pick.
@@ -8,7 +8,7 @@ import { analyze, classify, surfaceShareInBox, handShareNearBox, boxInFrame, dil
 import { TEXT, PARTS, ACTIONS, COLORS, fmt } from './text.js';
 
 const ORDER = ['body', 'black', 'red', 'blue', 'grip'];
-const SNAP_FRAMES = 6;
+const WIN = 8;                // frames voted on while the parts are being recognised
 const LONG_SIDE = 800;         // analysis size (px, long side): thin refills stay a few pixels wide
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -20,17 +20,17 @@ const N = (id) => PARTS[lang][id].name;
 const O = (id) => PARTS[lang][id].obj;
 
 // ---------- state ----------
-let phase = 'start';          // start | snap | snapping | confirm | pick | done
+let phase = 'start';          // start | setup | pick | done
 let step = 0;
 let wrongPart = null;         // part picked by mistake, until it is put back
 let toast = null;             // { kind: 'ok' | 'back', text, until }
 let lastRes = null;
 let outView = false;          // a part's spot is outside the picture: nothing is judged for it
 let outViewAt = -1e9;         // last time that was so: judging waits a moment after the parts are back in view
-let fixedEdge = null;         // what was at the picture edge in the photo (not a hand), moved with the camera
-let snapRuns = [];            // analyses collected for the photo
-let cands = [];               // photo result: [{ blob, name }]
-let tagHits = [];             // tap areas of the name tags on the confirm screen
+let fixedEdge = null;         // what was at the picture edge at the start (not a hand), moved with the camera
+let recentRuns = [];          // last analyses, voted on during setup
+let found = [];               // setup result: [{ name, blob }] (latest position, voted name)
+let stableN = 0;              // consecutive frames with all 5 names in the same places
 // surface colour, updated slowly and only by colours close to it, so a hand in the picture cannot hijack it
 let bgColor = null, bgOff = 0;
 function trackBackground(m) {
@@ -48,7 +48,6 @@ resetTrack();
 const video = $('cam');
 const work = document.createElement('canvas');
 const wctx = work.getContext('2d', { willReadFrequently: true });
-const stillSrc = document.createElement('canvas');   // the photo, at camera resolution
 async function startCamera() {
   ensureAudio();
   try {
@@ -63,26 +62,16 @@ async function startCamera() {
   }
 }
 function reset() {
-  phase = 'snap'; step = 0; wrongPart = null; toast = null; outView = false; outViewAt = -1e9; fixedEdge = null; snapRuns = []; cands = []; bgColor = null;
+  phase = 'setup'; step = 0; wrongPart = null; toast = null; outView = false; outViewAt = -1e9; fixedEdge = null; recentRuns = []; found = []; stableN = 0; bgColor = null;
   resetTrack();
   render();
 }
-function takePhoto() {
-  if (phase !== 'snap' || !video.videoWidth) return;
-  ensureAudio();
-  snapRuns = [];
-  stillSrc.width = video.videoWidth; stillSrc.height = video.videoHeight;
-  stillSrc.getContext('2d').drawImage(video, 0, 0);
-  phase = 'snapping';
-  render();
-}
-
 // ---------- analysis loop (about 10 times a second) ----------
 let lastRun = 0;
 function loop() {
   requestAnimationFrame(loop);
   const t = now();
-  if (phase !== 'start' && phase !== 'confirm' && video.readyState >= 2 && video.videoWidth && t - lastRun > 95) {
+  if (phase !== 'start' && video.readyState >= 2 && video.videoWidth && t - lastRun > 95) {
     lastRun = t;
     const vw = video.videoWidth, vh = video.videoHeight;
     const s = Math.min(1, LONG_SIDE / Math.max(vw, vh));
@@ -92,57 +81,61 @@ function loop() {
     lastRes = analyze(wctx.getImageData(0, 0, w, h), w, h, bgColor);
     trackBackground(lastRes.median);
     lastRes.scale = s;
-    if (phase === 'snapping') { snapRuns.push(lastRes); if (snapRuns.length >= SNAP_FRAMES) finishPhoto(); else render(); }
-    else if (phase === 'pick' || phase === 'done') update(lastRes, t);
-    else render();
+    if (phase === 'setup') setup(lastRes);
+    else update(lastRes, t);
   }
   draw(t);
 }
 
-// ---------- the photo: vote over several frames ----------
+// ---------- recognising the parts: vote over the last frames ----------
 const isThin = (b) => b.L / b.W >= 8.5;
-function finishPhoto() {
-  // group the blobs of all frames by position; keep what is there in at least half of the frames
+function vote(runs) {
+  // group the blobs of all frames by position; keep what is there in most frames and in the latest one
   const groups = [];
-  for (const res of snapRuns) for (const b of res.parts) {
-    if (b.L / b.W < 1.6) continue;
-    let g = groups.find((q) => isThin(q.items[0]) === isThin(b) && Math.hypot(q.cx - b.cx, q.cy - b.cy) < Math.max(10, 0.3 * b.L));
-    if (!g) { g = { items: [], cx: b.cx, cy: b.cy }; groups.push(g); }
-    g.items.push(b); g.cx = g.items.reduce((a, q) => a + q.cx, 0) / g.items.length; g.cy = g.items.reduce((a, q) => a + q.cy, 0) / g.items.length;
-  }
-  const keep = groups.filter((g) => g.items.length >= Math.ceil(snapRuns.length / 2));
+  runs.forEach((res, f) => {
+    for (const b of res.parts) {
+      if (b.L / b.W < 1.6) continue;
+      let g = groups.find((q) => isThin(q.items[0]) === isThin(b) && Math.hypot(q.cx - b.cx, q.cy - b.cy) < Math.max(10, 0.3 * b.L));
+      if (!g) { g = { items: [], cx: b.cx, cy: b.cy, lastF: -1 }; groups.push(g); }
+      g.items.push(b); g.latest = b; g.lastF = f;
+      g.cx = b.cx; g.cy = b.cy;               // follow the newest position (the phone may move a little)
+    }
+  });
+  const keep = groups.filter((g) => g.items.length >= Math.ceil(runs.length * 0.6) && g.lastF === runs.length - 1);
   const avg = keep.map((g) => {
     const it = g.items, n = it.length, m = (k) => it.reduce((a, q) => a + q[k], 0) / n;
-    const c2 = it.reduce((a, q) => a + Math.cos(2 * q.angle), 0), s2 = it.reduce((a, q) => a + Math.sin(2 * q.angle), 0);
-    return { cx: m('cx'), cy: m('cy'), L: m('L'), W: m('W'), area: m('area'), red: m('red'), blue: m('blue'), redN: m('redN'), blueN: m('blueN'), dark: m('dark'), angle: 0.5 * Math.atan2(s2, c2) };
+    return { latest: g.latest, L: m('L'), W: m('W'), area: m('area'), red: m('red'), blue: m('blue'), redN: m('redN'), blueN: m('blueN'), dark: m('dark') };
   });
-  classify(avg);
-  // named parts first, then up to 3 unnamed candidates (largest), so a missed part can be named by hand
-  const named = avg.filter((b) => b.label);
-  const unnamed = avg.filter((b) => !b.label && b.L >= 0.3 * Math.max(1, ...avg.map((q) => q.L))).sort((a, b) => b.area - a.area).slice(0, 3);
-  cands = [...named, ...unnamed].map((b) => ({ blob: b, name: b.label || null }));
-  phase = 'confirm';
-  log('photo', cands.map((c) => c.name || '?').join(','));
-  render();
+  classify(avg);                               // names from colour/size averaged over the frames: steadier
+  return avg.filter((b) => b.label).map((b) => ({ name: b.label, blob: b.latest }));
 }
-// tap a name tag: next name; a name already used elsewhere is swapped
-function cycleName(i) {
-  const c = cands[i], opts = [...ORDER, null];
-  const next = opts[(opts.indexOf(c.name) + 1) % opts.length];
-  const other = next && cands.find((q, j) => j !== i && q.name === next);
-  if (other) other.name = c.name;
-  c.name = next;
-  render();
+function setup(res) {
+  recentRuns.push(res);
+  if (recentRuns.length > WIN) recentRuns.shift();
+  const prev = found;
+  found = recentRuns.length >= 4 ? vote(recentRuns) : [];
+  const all = ORDER.every((id) => found.some((c) => c.name === id));
+  const same = all && found.every((c) => { const q = prev.find((x) => x.name === c.name); return q && Math.hypot(q.blob.cx - c.blob.cx, q.blob.cy - c.blob.cy) < 10; });
+  stableN = same ? stableN + 1 : 0;
+  // all 5 named in the same places for 5 frames in a row, and no hand at work: nothing hand-like near a part and
+  // nothing moving in from the edge (a table or desk edge that is just there does not count)
+  if (stableN >= 5 && recentRuns.length >= 6 && handsAway(res)) startPicking();
+  else render();
+}
+function handsAway(res) {
+  if (!res.handN) return true;
+  const hs = recentRuns.slice(-5).map((r) => r.handN);
+  const still = Math.max(...hs) - Math.min(...hs) < 0.05 * Math.max(...hs) + 300;
+  return still && found.every((c) => handShareNearBox(res, c.blob) < 0.02);
 }
 function startPicking() {
-  if (phase !== 'confirm' || !ORDER.every((id) => cands.some((c) => c.name === id))) return;
   resetTrack();
   const t = now();
-  const ref = snapRuns[snapRuns.length - 1];
+  const ref = recentRuns[recentRuns.length - 1];
   const edge = new Uint8Array(ref.w * ref.h);
-  for (const r of snapRuns) if (r.hand && r.w === ref.w) for (let i = 0; i < edge.length; i++) if (r.hand[i]) edge[i] = 1;
+  for (const r of recentRuns) if (r.hand && r.w === ref.w) for (let i = 0; i < edge.length; i++) if (r.hand[i]) edge[i] = 1;
   fixedEdge = { mask: dilate(edge, ref.w, ref.h, 10), w: ref.w, h: ref.h, dx: 0, dy: 0 };
-  for (const c of cands) if (c.name) {
+  for (const c of found) {
     // how the spot looks with the part on it: a faint part (clear refill) leaves much of its box "desk-like",
     // so "bare" must mean clearly more desk than that
     const base = surfaceShareInBox(ref, c.blob, 4);
@@ -258,23 +251,12 @@ function log(...a) { events.push({ t: Math.round(now()), e: a.join(' ') }); }
 function render() {
   if (phase === 'start') return;
   let cls = '', head = '', sub = '', num = '';
-  const snapUI = phase === 'snap' || phase === 'snapping';
-  $('cta').hidden = !snapUI;
-  $('confirmbar').hidden = phase !== 'confirm';
-  $('still').hidden = phase !== 'confirm';
-  $('ov').classList.toggle('tappable', phase === 'confirm');
-  if (snapUI) {
-    num = '📷';
-    if (phase === 'snapping') { head = T('snapping'); sub = T('snapSub'); }
-    else if (lastRes && !lastRes.surface) { head = T('noSurface'); sub = T('snapSub'); }
-    else { head = T('snapHead'); sub = T('snapSub'); }
-    $('snap').disabled = phase === 'snapping';
-  } else if (phase === 'confirm') {
-    const have = ORDER.filter((id) => cands.some((c) => c.name === id));
+  if (phase === 'setup') {
+    const have = ORDER.filter((id) => found.some((c) => c.name === id));
     num = `${have.length}/5`;
-    if (have.length === 5) { head = T('confirmHead'); sub = T('confirmSub'); }
-    else { cls = 'warn'; head = T('missingHead', { n: have.length }); sub = T('missingSub', { list: ORDER.filter((id) => !have.includes(id)).map(N).join(', ') }); }
-    $('go').disabled = have.length < 5;
+    head = lastRes && !lastRes.surface ? T('noSurface') : T('setup');
+    if (have.length === 5) sub = lastRes && !handsAway(lastRes) ? T('allHand') : T('all');
+    else sub = T('found', { n: have.length }) + (have.length ? ' · ' + have.map(N).join(', ') : '');
   } else if (phase === 'done') {
     cls = 'ok'; head = T('done'); sub = T('doneHint'); num = '✓';
   } else {
@@ -304,9 +286,6 @@ function renderStatic() {
   $('s-lang').textContent = TEXT[lang].other;
   $('lang2').textContent = TEXT[lang].other;
   $('restart').textContent = T('restart');
-  $('snap').textContent = T('snap');
-  $('retake').textContent = T('retake');
-  $('go').textContent = T('go');
   render();
 }
 function setLang(l) { lang = l; try { localStorage.setItem('pick:lang', l); } catch (e) { /* ignore */ } renderStatic(); }
@@ -314,14 +293,6 @@ $('s-lang').addEventListener('click', () => setLang(lang === 'ko' ? 'en' : 'ko')
 $('lang2').addEventListener('click', () => setLang(lang === 'ko' ? 'en' : 'ko'));
 $('s-start').addEventListener('click', startCamera);
 $('restart').addEventListener('click', reset);
-$('snap').addEventListener('click', takePhoto);
-$('retake').addEventListener('click', reset);
-$('go').addEventListener('click', startPicking);
-$('ov').addEventListener('click', (e) => {
-  if (phase !== 'confirm') return;
-  const hit = tagHits.find((r) => e.clientX >= r.x - 6 && e.clientX <= r.x + r.w + 6 && e.clientY >= r.y - 6 && e.clientY <= r.y + r.h + 6);
-  if (hit) cycleName(hit.i);
-});
 
 // the red frame stays while a wrong part is out; a green frame shows briefly after a right pick
 let flashOkUntil = 0;
@@ -331,7 +302,6 @@ function syncFlash() { $('flash').className = 'flash' + (wrongPart ? ' bad' : fl
 // ---------- overlay ----------
 const ov = $('ov');
 const octx = ov.getContext('2d');
-const still = $('still');
 function fitCanvas(c, ctx) {
   const dpr = Math.min(devicePixelRatio || 1, 2), W = innerWidth, H = innerHeight;
   if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
@@ -345,23 +315,14 @@ function draw(t) {
   const vw = video.videoWidth, vh = video.videoHeight;
   const cs = Math.max(W / vw, H / vh), ox = (W - vw * cs) / 2, oy = (H - vh * cs) / 2;
   const k = cs / lastRes.scale;                       // analysis px -> CSS px
-  if (phase === 'confirm') {
-    const sctx = still.getContext('2d');
-    fitCanvas(still, sctx);
-    sctx.drawImage(stillSrc, ox, oy, vw * cs, vh * cs);
-    tagHits = [];
-    placed = [];
-    cands.forEach((c) => outline({ ...c.blob }, ox, oy, k, c.name ? 'rgba(255,255,255,.95)' : 'rgba(255,255,255,.6)', false, 0, !c.name));
-    cands.forEach((c, i) => {
-      const r = tag(c.name ? N(c.name) : T('notPart'), c.blob, ox, oy, k, c.name ? 'rgba(11,15,21,.88)' : 'rgba(11,15,21,.6)', c.name ? COLORS[c.name] : '#ffffff', true, true);
-      tagHits.push({ ...r, i });
-    });
+  placed = [];
+  if (phase === 'setup') {                            // names found so far
+    for (const c of found) outline(c.blob, ox, oy, k, 'rgba(255,255,255,.92)', false, 0, false);
+    for (const c of found) tag(N(c.name), c.blob, ox, oy, k, 'rgba(11,15,21,.85)', COLORS[c.name], false, false);
     return;
   }
-  if (phase === 'snap' || phase === 'snapping') return;
   const want = phase === 'pick' ? ORDER[step] : null;
   const pulse = 0.5 + 0.5 * Math.sin(t / 220);
-  placed = [];
   // every part still on the desk: where it is seen now, else at its last known spot (e.g. under a hand)
   const shown = ORDER.filter((id) => track[id].on && !done(id) && track[id].box);
   const at = (id) => track[id].last || track[id].box;
@@ -426,7 +387,7 @@ requestAnimationFrame(loop);
 if (params.get('autostart') === '1') startCamera();
 
 window.__pick = {
-  get state() { return { phase, step, want: ORDER[step], wrongPart, outView, on: ORDER.filter((id) => track[id].on), photo: cands.map((c) => c.name || '?') }; },
+  get state() { return { phase, step, want: ORDER[step], wrongPart, outView, on: ORDER.filter((id) => track[id].on), found: found.map((c) => c.name) }; },
   debug(id) { const tr = track[id]; return { hand: lastRes && tr.box ? +handShareNearBox(lastRes, tr.box, 14, fixedEdge).toFixed(3) : null, bare: lastRes && tr.box ? +surfaceShareInBox(lastRes, tr.box, 4).toFixed(2) : null, need: tr.bare, inFrame: lastRes && tr.box ? boxInFrame(lastRes, tr.box) : null, clearN: tr.clearN, box: tr.box && [Math.round(tr.box.cx), Math.round(tr.box.cy), Math.round(tr.box.L)], on: tr.on, hist: tr.hist.map(Number).join(''), handAt: Math.round(tr.handAt), seenAt: Math.round(tr.seenAt) }; },
-  events, tagHits: () => tagHits,
+  events,
 };
