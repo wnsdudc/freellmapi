@@ -1,0 +1,43 @@
+<!doctype html><meta charset="utf-8"><title>Recognizer test</title>
+<script src="../vendor/tf.min.js"></script>
+<script type="module">
+import { PartRecognizer, Stabilizer } from '../recognizer.js';
+import { renderSample } from './synth.js';
+const CLASSES = ['none', 'pen', 'body', 'grip', 'black', 'red', 'blue'];
+window.runTest = async (nTrain = 45, nTest = 40) => {
+  const rec = new PartRecognizer();
+  await rec.load('../vendor/mobilenet/model.json');
+  const t0 = performance.now();
+  for (const c of CLASSES) for (let i = 0; i < nTrain; i++) rec.add(c, rec.features(renderSample(c, i * 7 + 1), 0, 0, 224));
+  const trainMs = (performance.now() - t0) / (CLASSES.length * nTrain);
+  const conf = {}; CLASSES.forEach((a) => { conf[a] = {}; CLASSES.forEach((b) => { conf[a][b] = 0; }); });
+  let ok = 0, n = 0; const t1 = performance.now();
+  for (const c of CLASSES) for (let i = 0; i < nTest; i++) {
+    const r = rec.classify(rec.features(renderSample(c, 100000 + i * 13), 0, 0, 224));
+    conf[c][r.label]++; n++; if (r.label === c) ok++;
+  }
+  const inferMs = (performance.now() - t1) / n;
+  // verdict-level check: 6 consecutive video-like frames of one held part
+  const stab = new Stabilizer();
+  let okHits = 0, okTrials = 0, falseAlarm = 0, alarmTrials = 0, missedAlarm = 0;
+  for (const c of CLASSES.filter((x) => x !== 'none')) for (let rep = 0; rep < 12; rep++) {
+    stab.reset(); let st = null;
+    for (let f = 0; f < 6; f++) st = stab.push(rec.classify(rec.features(renderSample(c, 200000 + rep * 101, 224, 224, f + 1), 0, 0, 224)));
+    const strict = stab.strict();
+    okTrials++; if (st === c) okHits++;
+    // pretend the step expected a different part
+    alarmTrials++;
+    const alarm = strict && strict !== 'none';
+    if (!alarm) missedAlarm++;
+    // false alarm: when the right part is held, the strict result names another part
+    if (strict && strict !== 'none' && strict !== c) falseAlarm++;
+  }
+  return { acc: ok / n, conf, trainMs, inferMs, backend: window.tf.getBackend(), okRate: okHits / okTrials, falseAlarmRate: falseAlarm / okTrials, missedAlarmRate: missedAlarm / alarmTrials };
+};
+window.sheet = () => {   // one example per class, for a visual check
+  const c = document.createElement('canvas'); c.width = 224 * 7; c.height = 224 * 2; const x = c.getContext('2d');
+  CLASSES.forEach((k, i) => { x.drawImage(renderSample(k, 3), i * 224, 0); x.drawImage(renderSample(k, 100013), i * 224, 224); });
+  return c.toDataURL('image/png');
+};
+window.ready = true;
+</script>
