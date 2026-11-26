@@ -30,7 +30,7 @@ body { background: var(--bg); color: var(--ink); font: 16px/1.45 var(--font); ov
 .banner { background: var(--glass); border: 1px solid var(--line); border-radius: 18px; padding: 12px 14px; display: grid; gap: 4px;
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: background-color .2s, border-color .2s; }
 .banner .row { display: flex; align-items: center; gap: 10px; }
-.num { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: #fff; font-weight: 800; font-size: 17px; }
+.num { flex: none; min-width: 34px; height: 34px; padding: 0 7px; border-radius: 17px; display: grid; place-items: center; background: var(--accent); color: #fff; font-weight: 800; font-size: 17px; }
 .banner h1 { margin: 0; font-size: 22px; line-height: 1.2; font-weight: 800; text-wrap: balance; }
 .banner p { margin: 0; color: var(--muted); font-size: 14.5px; }
 .banner.ok { background: rgba(21, 128, 61, .92); border-color: var(--ok); }
@@ -94,7 +94,7 @@ body { background: var(--bg); color: var(--ink); font: 16px/1.45 var(--font); ov
       <rect x="40" y="96" width="118" height="3" rx="1.5" fill="#d2232a"/>
       <rect x="40" y="116" width="118" height="3" rx="1.5" fill="#1f4fd6"/>
       <rect x="28" y="26" width="122" height="29" rx="6" fill="none" stroke="#2f80ff" stroke-width="3"/>
-      <rect x="28" y="16" width="44" height="14" rx="7" fill="#2f80ff"/><text x="50" y="26.5" text-anchor="middle" font-size="9" font-weight="700" fill="#fff" font-family="system-ui">본체</text>
+      <rect x="28" y="16" width="44" height="14" rx="7" fill="#2f80ff"/><text x="50" y="26.5" text-anchor="middle" font-size="9" font-weight="700" fill="#fff" font-family="system-ui">상단</text>
     </svg>
     <ol id="s-tips"></ol>
     <button id="s-start" class="btn primary" type="button"></button>

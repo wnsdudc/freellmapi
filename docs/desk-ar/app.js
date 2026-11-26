@@ -1,5 +1,5 @@
 // Pen assembly: name the parts on the paper, then check each part the user picks up.
-import { analyze, paperShareInBox } from './vision.js';
+import { analyze, surfaceShareInBox } from './vision.js';
 import { TEXT, PARTS, ACTIONS, COLORS, fmt } from './text.js';
 
 const ORDER = ['body', 'black', 'red', 'blue', 'grip'];
@@ -19,6 +19,16 @@ let wrongPart = null;         // part picked by mistake, until it is put back
 let toast = null;             // { kind: 'ok' | 'back', text, until }
 let lastRes = null;
 let setupReadySince = 0;
+// surface colour, updated slowly and only by colours close to it, so a hand in the picture cannot hijack it
+let bgColor = null;
+function trackBackground(m) {
+  if (!bgColor) { bgColor = m.slice(); return; }
+  const dist = Math.abs(m[0] - bgColor[0]) + Math.abs(m[1] - bgColor[1]) + Math.abs(m[2] - bgColor[2]);
+  if (dist < 36) for (let i = 0; i < 3; i++) bgColor[i] += (m[i] - bgColor[i]) * 0.08;
+  else if (++bgOff > 40) { bgColor = m.slice(); bgOff = 0; }      // scene really changed (new place / lighting)
+  if (dist < 36) bgOff = 0;
+}
+let bgOff = 0;
 const track = {};             // per part: presence history, on-table flag, last box
 for (const id of ORDER) track[id] = { hist: [], on: false, box: null };
 
@@ -40,7 +50,7 @@ async function startCamera() {
   }
 }
 function reset() {
-  phase = 'setup'; step = 0; wrongPart = null; toast = null; setupReadySince = 0;
+  phase = 'setup'; step = 0; wrongPart = null; toast = null; setupReadySince = 0; bgColor = null;
   for (const id of ORDER) Object.assign(track[id], { hist: [], on: false, box: null });
   render();
 }
@@ -57,27 +67,52 @@ function loop() {
     const w = Math.round(vw * s), h = Math.round(vh * s);
     if (work.width !== w || work.height !== h) { work.width = w; work.height = h; }
     wctx.drawImage(video, 0, 0, w, h);
-    lastRes = analyze(wctx.getImageData(0, 0, w, h), w, h);
+    lastRes = analyze(wctx.getImageData(0, 0, w, h), w, h, bgColor);
+    trackBackground(lastRes.median);
     lastRes.scale = s;
     update(lastRes, t);
   }
   draw(t);
 }
 
+// A part keeps its name by staying where it was: each known part first claims the blob at its last position
+// (similar length, same thin/thick type). Only parts that are not found there take a blob by its colour/size name.
+// This stops a half-covered part from passing its name to a neighbour while a hand is over it.
+const isThin = (b) => b.L / b.W >= 8.5;
 function update(res, t) {
   const seen = {};
-  for (const p of res.parts) if (p.label) seen[p.label] = p;
+  const used = new Set();
+  const blobs = res.parts.filter((b) => b.label || b.L / b.W >= 1.6);
+  for (const id of ORDER) {
+    const tr = track[id];
+    if (!tr.box || !tr.on) continue;
+    let best = null, bd = Infinity;
+    for (const b of blobs) {
+      if (used.has(b) || isThin(b) !== isThin(tr.box)) continue;
+      const r = b.L / tr.box.L;
+      if (r < 0.72 || r > 1.35) continue;
+      const dist = Math.hypot(b.cx - tr.box.cx, b.cy - tr.box.cy);
+      if (dist < Math.max(14, tr.box.L * 0.35) && dist < bd) { bd = dist; best = b; }
+    }
+    if (best) { seen[id] = best; used.add(best); }
+  }
+  for (const id of ORDER) {
+    if (seen[id]) continue;
+    const b = blobs.find((x) => !used.has(x) && x.label === id);
+    if (b) { seen[id] = b; used.add(b); }
+  }
   for (const id of ORDER) {
     const tr = track[id];
     tr.hist.push(!!seen[id]);
     if (tr.hist.length > 6) tr.hist.shift();
     if (seen[id]) tr.box = seen[id];
+    tr.last = seen[id] || null;
     const recent = tr.hist.slice(-5).filter(Boolean).length;
     const absent = tr.hist.length >= 4 && tr.hist.slice(-4).every((x) => !x);
     if (!tr.on && recent >= 3) { tr.on = true; onPlaced(id); }
-    else if (tr.on && absent && res.paper) {
-      // gone: picked up only if the paper is visible where it lay (otherwise a hand is just covering it)
-      if (!tr.box || paperShareInBox(res, tr.box) > 0.72) { tr.on = false; onPicked(id); }
+    else if (tr.on && absent && res.surface) {
+      // gone: picked up only if the bare surface shows where it lay (otherwise a hand is just covering it)
+      if (!tr.box || surfaceShareInBox(res, tr.box) > 0.72) { tr.on = false; onPicked(id); }
     }
   }
   if (phase === 'setup') {
@@ -122,9 +157,9 @@ function render() {
   let cls = '', head = '', sub = '', num = '';
   if (phase === 'setup') {
     const n = ORDER.filter((id) => track[id].on).length;
-    head = lastRes && !lastRes.paper ? T('noPaper') : T('setup');
-    sub = T('found', { n }) + ' · ' + ORDER.filter((id) => track[id].on).map(N).join(', ');
-    num = String(n);
+    head = lastRes && !lastRes.surface ? T('noSurface') : T('setup');
+    sub = T('found', { n }) + (n ? ' · ' + ORDER.filter((id) => track[id].on).map(N).join(', ') : '');
+    num = `${n}/5`;
     $('go').hidden = n < 3;
   } else if (phase === 'done') {
     cls = 'ok'; head = T('done'); sub = T('doneHint'); num = '✓';
@@ -138,6 +173,7 @@ function render() {
     else { head = T('pick', { name: O(want) }); sub = T('then', { action: ACTIONS[lang][want] }); }
   }
   banner.className = 'banner ' + cls;
+  syncFlash();
   $('head').textContent = head;
   $('sub').textContent = sub;
   $('num').textContent = num;
@@ -165,13 +201,10 @@ $('s-start').addEventListener('click', startCamera);
 $('restart').addEventListener('click', reset);
 $('go').addEventListener('click', () => { if (phase === 'setup') { phase = 'pick'; step = ORDER.findIndex((id) => track[id].on); if (step < 0) step = 0; render(); } });
 
-let flashTimer = 0;
-function flash(kind) {
-  const f = $('flash');
-  f.className = 'flash ' + kind;
-  clearTimeout(flashTimer);
-  flashTimer = setTimeout(() => { f.className = 'flash' + (wrongPart ? ' bad' : ''); }, kind === 'ok' ? 700 : 1200);
-}
+// the red frame stays while a wrong part is out; a green frame shows briefly after a right pick
+let flashOkUntil = 0;
+function flash(kind) { if (kind === 'ok') flashOkUntil = now() + 700; syncFlash(); setTimeout(syncFlash, 720); }
+function syncFlash() { $('flash').className = 'flash' + (wrongPart ? ' bad' : flashOkUntil > now() ? ' ok' : ''); }
 
 // ---------- overlay: outline + name on every part ----------
 const ov = $('ov');
@@ -188,7 +221,12 @@ function draw(t) {
   const k = cs / lastRes.scale;                       // analysis px -> CSS px
   const want = phase === 'pick' ? ORDER[step] : null;
   const pulse = 0.5 + 0.5 * Math.sin(t / 220);
-  for (const p of lastRes.parts) {
+  const names = new Map();
+  for (const id of ORDER) if (track[id].on && track[id].last) names.set(track[id].last, id);
+  for (const p0 of lastRes.parts) {
+    const name = names.get(p0) || null;
+    if (!name) continue;                            // only name what is recognised; no question marks
+    const p = { ...p0, label: name };
     const target = p.label && p.label === want;
     const color = !p.label ? 'rgba(255,255,255,.55)' : target ? '#2f80ff' : 'rgba(255,255,255,.92)';
     octx.save();
@@ -241,4 +279,5 @@ renderStatic();
 requestAnimationFrame(loop);
 if (params.get('autostart') === '1') startCamera();
 
-window.__pick = { get state() { return { phase, step, want: ORDER[step], wrongPart, on: ORDER.filter((id) => track[id].on), parts: lastRes ? lastRes.parts.map((p) => p.label || '?') : [], paper: lastRes && lastRes.paper ? { mmPerPx: lastRes.paper.mmPerPx && +lastRes.paper.mmPerPx.toFixed(3), touches: lastRes.paper.touches } : null }; }, events, analyze };
+window.__pick = {
+  debug(id) { const tr = track[id]; return { box: tr.box && [Math.round(tr.box.cx), Math.round(tr.box.cy), Math.round(tr.box.L), +tr.box.W.toFixed(1), +tr.box.dark.toFixed(2)], on: tr.on, hist: tr.hist.map(Number).join(''), share: lastRes && tr.box ? +surfaceShareInBox(lastRes, tr.box).toFixed(2) : null, bg: bgColor && bgColor.map(Math.round), labels: lastRes ? lastRes.parts.map((p) => p.label || '?').join(',') : '' }; }, get state() { return { phase, step, want: ORDER[step], wrongPart, on: ORDER.filter((id) => track[id].on), parts: lastRes ? lastRes.parts.map((p) => p.label || '?') : [], surface: !!(lastRes && lastRes.surface) }; }, events, analyze };
